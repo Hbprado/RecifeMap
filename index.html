@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mapa de Recife</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        #map {
+            height: 800px;
+        }
+        .highlight {
+            weight: 3;
+            color: #666;
+            dashArray: '';
+            fillOpacity: 0.7;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 100px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .control-item {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <div class="control-item">
+            <input type="text" id="searchBox" placeholder="Buscar Bairro..." onkeydown="if (event.key === 'Enter') searchBairro()">
+            <button onclick="searchBairro()">Buscar</button>
+        </div>
+        <div class="control-item">
+            <button onclick="mostrarMaiorBairro()">Maior Bairro</button>
+            <button onclick="mostrarMenorBairro()">Menor Bairro</button>
+        </div>
+    </div>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://unpkg.com/@turf/turf"></script>
+    <script>
+        var map = L.map('map').setView([-8.0476, -34.8770], 12); // Coordenadas centrais de Recife
+        var geojsonLayer;
+        var bairrosData;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        function onEachFeature(feature, layer) {
+            var popupContent = "<b>Bairro:</b> " + feature.properties.bairro_nom;
+            // Adicione outras propriedades aqui
+            if (feature.properties) {
+                for (var property in feature.properties) {
+                    if (feature.properties.hasOwnProperty(property) && property !== "bairro_nom") {
+                        popupContent += "<br><b>" + property + ":</b> " + feature.properties[property];
+                    }
+                }
+            }
+            layer.bindPopup(popupContent);
+
+            // Hover effect
+            layer.on({
+                mouseover: highlightFeature,
+                mouseout: resetHighlight
+            });
+
+            // Armazena a camada para facilitar a pesquisa
+            layer.featureId = feature.properties.bairro_nom;
+        }
+
+        function highlightFeature(e) {
+            var layer = e.target;
+            layer.setStyle({
+                weight: 5,
+                color: '#666',
+                dashArray: '',
+                fillOpacity: 0.7
+            });
+
+            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                layer.bringToFront();
+            }
+        }
+
+        function resetHighlight(e) {
+            geojsonLayer.resetStyle(e.target);
+        }
+
+        fetch('recifemapa.geojson')
+            .then(response => response.json())
+            .then(data => {
+                bairrosData = data.features;
+                geojsonLayer = L.geoJSON(data, {
+                    style: function (feature) {
+                        return {
+                            color: "#2262CC",
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.7
+                        };
+                    },
+                    onEachFeature: onEachFeature
+                }).addTo(map);
+            })
+            .catch(err => console.log(err));
+
+        function searchBairro() {
+            var searchText = document.getElementById('searchBox').value.toUpperCase();
+            geojsonLayer.eachLayer(function(layer) {
+                if (layer.feature.properties.bairro_nom.toUpperCase() === searchText) {
+                    map.fitBounds(layer.getBounds());
+                    layer.openPopup();
+                    layer.setStyle({
+                        weight: 5,
+                        color: '#FF0000',
+                        dashArray: '',
+                        fillOpacity: 0.7
+                    });
+                } else {
+                    geojsonLayer.resetStyle(layer);
+                }
+            });
+        }
+
+        function mostrarMaiorBairro() {
+            if (!bairrosData) return;
+            let maiorBairro = bairrosData[0];
+            let maiorArea = turf.area(bairrosData[0]);
+
+            bairrosData.forEach(bairro => {
+                const area = turf.area(bairro);
+                if (area > maiorArea) {
+                    maiorArea = area;
+                    maiorBairro = bairro;
+                }
+            });
+
+            geojsonLayer.eachLayer(function(layer) {
+                if (layer.feature === maiorBairro) {
+                    map.fitBounds(layer.getBounds());
+                    layer.openPopup();
+                    layer.setStyle({
+                        weight: 5,
+                        color: '#00FF00',
+                        dashArray: '',
+                        fillOpacity: 0.7
+                    });
+                } else {
+                    geojsonLayer.resetStyle(layer);
+                }
+            });
+        }
+
+        function mostrarMenorBairro() {
+            if (!bairrosData) return;
+            let menorBairro = bairrosData[0];
+            let menorArea = turf.area(bairrosData[0]);
+
+            bairrosData.forEach(bairro => {
+                const area = turf.area(bairro);
+                if (area < menorArea) {
+                    menorArea = area;
+                    menorBairro = bairro;
+                }
+            });
+
+            geojsonLayer.eachLayer(function(layer) {
+                if (layer.feature === menorBairro) {
+                    map.fitBounds(layer.getBounds());
+                    layer.openPopup();
+                    layer.setStyle({
+                        weight: 5,
+                        color: '#0000FF',
+                        dashArray: '',
+                        fillOpacity: 0.7
+                    });
+                } else {
+                    geojsonLayer.resetStyle(layer);
+                }
+            });
+        }
+
+        // Adicionar ferramentas de desenho
+        var drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        var drawControl = new L.Control.Draw({
+            draw: {
+                polyline: false,
+                circle: false,
+                rectangle: false,
+                marker: false,
+                polygon: {
+                    shapeOptions: {
+                        color: 'yellow'
+                    }
+                }
+            },
+            edit: {
+                featureGroup: drawnItems
+            }
+        });
+        map.addControl(drawControl);
+
+        map.on(L.Draw.Event.CREATED, function (event) {
+            var layer = event.layer;
+            var area = turf.area(layer.toGeoJSON());
+            var id = L.stamp(layer);  // ID único do Leaflet
+
+            // Adicionar popup com informações
+            layer.bindPopup("<b>ID:</b> " + id + "<br><b>Área:</b> " + area.toFixed(2) + " m²");
+
+            // Adicionar evento de clique para abrir popup
+            layer.on('click', function (e) {
+                layer.openPopup();
+            });
+
+            drawnItems.addLayer(layer);
+        });
+
+        map.on('draw:edited', function (event) {
+            var layers = event.layers;
+            layers.eachLayer(function (layer) {
+                var area = turf.area(layer.toGeoJSON());
+                var id = L.stamp(layer);  // ID único do Leaflet
+
+                // Atualizar popup com novas informações
+                layer.bindPopup("<b>ID:</b> " + id + "<br><b>Área:</b> " + area.toFixed(2) + " m²");
+            });
+        });
+
+        // Garantir que os popups dos polígonos desenhados tenham prioridade
+        drawnItems.on('click', function (e) {
+            e.layer.openPopup();
+        });
+    </script>
+</body>
+</html>
